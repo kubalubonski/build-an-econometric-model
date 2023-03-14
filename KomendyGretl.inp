@@ -1,0 +1,222 @@
+# statystyki opisowe
+summary wypadki drogi migracja wynagrodzenie bezrobocie zasoby samochody
+# macierz kowariancji
+ols samochody const wypadki drogi migracja bezrobocie zasoby wynagrodzenie --vcv 
+# test na normalność 
+modtest --normality
+series uhat = $uhat
+
+# Pierwszy model
+ols samochody const wypadki drogi migracja bezrobocie zasoby wynagrodzenie
+
+# Metoda Hellwiga
+y=samochody
+list xlist = wypadki drogi migracja wynagrodzenie bezrobocie zasoby
+#==================================================================
+#==================================================================
+function matrix dodawanie_1_binarne(scalar n, matrix pozycja)
+    kontrolna=1
+    loop j=1..n --quiet
+        if kontrolna==1
+            if pozycja[j,1]==0
+                pozycja[j,1]=1
+                kontrolna=0
+            else
+                pozycja[j,1]=0
+            endif
+        endif
+    endloop
+    return pozycja
+end function
+#================================================================
+function scalar helwig (series y, list robocza)
+    H=0
+    loop foreach j robocza --quiet
+        h=(corr(y,robocza.$j))^2
+        s=0
+        loop foreach k robocza --quiet
+            c=abs(corr(robocza.$j,robocza.$k))
+            s=s+c
+        endloop
+        h=h/s
+        H=H+h
+    endloop
+    return H
+end function
+#=================================================================
+n=nelem(xlist)
+pozycja=zeros(n,1)
+kombinacji=2^n-2
+H_max=helwig(y,xlist)
+H_rob=-1
+loop j=1..kombinacji --quiet
+    pozycja=dodawanie_1_binarne(n,pozycja)
+    robocza=xlist
+    loop foreach k xlist --quiet
+        if pozycja[k,1]==1
+            robocza=robocza-xlist.$k
+        endif
+    endloop
+    H_rob=helwig(y,robocza)
+    H_rob
+    robocza
+    if H_rob>H_max
+        H_max=H_rob
+        najlepszalista=robocza
+    endif
+endloop
+
+H_max
+najlepszalista
+
+# Drugi model(po Hellwigu)
+ols samochody const wypadki migracja bezrobocie zasoby
+
+
+# Ostateczny model
+ols l_samochody const l_wypadki l_migracja l_bezrobocie l_zasoby
+# Współliniowość
+ols l_wypadki const  l_migracja l_bezrobocie l_zasoby l_samochody
+R1=$rsq
+vif
+ols l_migracja const l_wypadki  l_bezrobocie l_zasoby l_samochody
+R2=$rsq 
+ols l_bezrobocie const l_wypadki l_migracja  l_zasoby l_samochody
+R3=$rsq 
+ols l_zasoby const l_wypadki l_migracja l_bezrobocie  l_samochody
+R4=$rsq 
+# test chowa
+chow 39
+# test Reset
+reset
+# Test liczby serii
+series e =$uhat
+runs e --equal
+
+##  Efekt katalizy
+#oznaczenia
+Y = l_samochody
+list xlist = l_wypadki l_migracja l_bezrobocie l_zasoby
+#================================================================
+#================================================================
+scalar n = nobs(l_samochody) #liczba obserwacji
+scalar k = nelem(xlist) #liczba zmiennych (bez stałej)
+
+#helwig
+function scalar helwig (series y, list robocza)
+    H=0
+    loop foreach j robocza --quiet
+        h=(corr(y,robocza.$j))^2
+        s=0
+        loop foreach k robocza --quiet
+            c=abs(corr(robocza.$j,robocza.$k))
+            s=s+c
+        endloop
+        h=h/s
+        H=H+h
+    endloop
+    return H
+end function
+    
+#para korelacyjna:
+matrix R = zeros(k,k)
+matrix R0 = zeros(k,1)
+loop foreach i xlist --quiet
+    R0[i,1]=corr(Y,xlist.$i)
+    loop foreach j xlist --quiet
+        R[i,j]=corr(xlist.$i,xlist.$j)
+    endloop
+endloop  
+
+#regularna para korelacyjna
+przejscie=zeros(k,2)
+R0_regularne=sort(abs(R0))
+loop i=1..k --quiet
+    loop j=1..k --quiet
+        if R0_regularne[i,1]==abs(R0[j,1])
+            przejscie[i,1]=j
+            if R0[j,1]>0
+                przejscie[j,2]=1
+            else
+                przejscie[j,2]=-1
+            endif
+        endif
+    endloop
+endloop
+R_regularne=R
+loop i=2..k --quiet
+    loop j=1..i-1 --quiet
+        R_regularne[i,j]=przejscie[przejscie[j,1],2]*przejscie[przejscie[i,1],2]*R[przejscie[j,1],przejscie[i,1]]
+        R_regularne[j,i]=R_regularne[i,j]
+    endloop
+endloop
+przejscie
+R
+R0
+R_regularne
+R0_regularne
+
+loop foreach i xlist --quiet
+    loop foreach j xlist --quiet
+        if i>j
+        if corr(xlist.$i,Y)>0
+            ca=1
+        else
+            ca=-1
+        endif
+        if corr(xlist.$j,Y)>0
+            cb=1
+        else
+            cb=-1
+        endif
+        if abs(corr(xlist.$i,Y))>abs(corr(xlist.$j,Y))
+            if (corr(xlist.$i,xlist.$j)*ca*cb>ca*cb*corr(xlist.$j,Y)/corr(xlist.$i,Y))||(corr(xlist.$i,xlist.$j)*ca*cb<0)
+                list katalizator = xlist.$j
+                list w_parze = xlist.$j xlist.$i
+                print "KATALIZATOR:"
+                katalizator
+                print "W PARZE:"
+                w_parze
+            endif
+        else
+            if (corr(xlist.$i,xlist.$j)*ca*cb>ca*cb*corr(xlist.$i,Y)/corr(xlist.$j,Y))||(corr(xlist.$i,xlist.$j)*ca*cb<0)
+                list katalizator = xlist.$i
+                list w_parze = xlist.$i xlist.$j
+                print "KATALIZATOR:"
+                katalizator
+                print "W PARZE:"
+                w_parze
+            endif 
+        endif
+        endif
+    endloop
+endloop
+
+#natężenie efektu katalizy
+ols Y const xlist --quiet
+H=helwig(Y,xlist)
+scalar natezenie_efektu_katalizy=$rsq-H
+natezenie_efektu_katalizy
+
+# PROGNOZA PUNKTOWA, prognoza dla wartości średnich
+ols l_samochody const l_wypadki l_migracja l_bezrobocie l_zasoby --vcv --quiet
+matrix x_tau = {1, mean(l_wypadki), mean(l_migracja), mean(l_bezrobocie), mean(l_zasoby)}
+matrix a = $coeff
+scalar prognoza_punktowa_dla_l_sam = x_tau*a
+
+
+# wariancja prognozy
+scalar wariancja_prognozy_dla_l_sam= x_tau*$vcv*x_tau'+$ess/$df
+
+# blad prognozy
+scalar blad_prognozy_dla_l_sam=sqrt(wariancja_prognozy_dla_l_sam)
+
+# PROGNOZA PRZEDZIAŁOWA
+#95% CI dla l_samochody
+scalar dolna = prognoza_punktowa_dla_l_sam-critical(t,$df,0.025)*blad_prognozy_dla_l_sam
+scalar gorna = prognoza_punktowa_dla_l_sam+critical(t,$df,0.025)*blad_prognozy_dla_l_sam
+
+scalar prognoza_punktowa_dla_sam = exp(prognoza_punktowa_dla_l_sam+0.5*wariancja_prognozy_dla_l_sam)
+#95% CI dla samochod
+scalar dolna_dla_sam = exp(dolna)
+scalar gorna_dla_sam = exp(gorna)
