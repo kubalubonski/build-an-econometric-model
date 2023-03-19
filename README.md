@@ -1,2 +1,2 @@
 # build-an-econometric-model
-# Projekt polega na budowie i analizie modelu ekonometrycznego przy pomocy programu Gretl.
+ This project is about construction and analysis of an econometric model
